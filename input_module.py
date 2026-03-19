@@ -11,7 +11,7 @@ class InputModule:
         # Load dataset
         df = pd.read_excel(dataset_path)
 
-        print("📥 Input Module: Reading packets from dataset...")
+        print("Input Module: Reading packets from dataset...")
 
         for _, row in df.iterrows():
             packet = {}
@@ -33,9 +33,9 @@ class InputModule:
 
             # Push packet into queue
             raw_queue.put(packet)
-            print(f"➡️ Input Module queued packet: {packet}")
+            print(f"Input Module queued packet: {packet}")
 
             # Delay between packets (simulates telemetry)
             time.sleep(delay)
 
-        print("✅ Input Module finished reading dataset.")
+        print("Input Module finished reading dataset.")
