@@ -1,0 +1,32 @@
+{
+  "dataset_path": "C:\\Users\\aleen\\OneDrive\\Desktop\\Phase 3\\data\\signed_sensor_data.xlsx",
+  "pipeline_dynamics": {
+    "input_delay_seconds": 0.01,
+    "core_parallelism": 2,
+    "stream_queue_max_size": 50
+  },
+  "schema_mapping": {
+    "columns": [
+      {"source_name": "Sensor_ID", "internal_mapping": "entity_name", "data_type": "string"},
+      {"source_name": "Timestamp", "internal_mapping": "time_period", "data_type": "integer"},
+      {"source_name": "Raw_Value", "internal_mapping": "metric_value", "data_type": "float"},
+      {"source_name": "Auth_Signature", "internal_mapping": "security_hash", "data_type": "string"}
+    ]
+  },
+  "output": {
+    "mode": "print",
+    "path": "C:/Users/aleen/OneDrive/Desktop/Phase 3/data/output.xlsx"
+  },
+  "processing": {
+    "stateless_tasks": {
+      "operation": "verify_signature",
+      "algorithm": "sha256",
+      "iterations": 100000,
+      "secret_key": "sda_spring_2026_secure_key"
+    },
+    "stateful_tasks": {
+      "operation": "running_average",
+      "running_average_window_size": 10
+    }
+  }
+}
