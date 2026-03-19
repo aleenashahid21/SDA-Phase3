@@ -1,43 +1,50 @@
 import json
-import queue
 import threading
+import time
 from telemetry import TelemetryStream
 from core_module import CoreModule
 from output_module import OutputModule
+from queues import raw_queue, processed_queue
+import dashboard
+
 
 def run_core(core, raw_queue, processed_queue):
-    while True:
-        core.run(raw_queue, processed_queue)
+    core.run(raw_queue, processed_queue)
+
 
 def run_output(config, processed_queue):
-    while True:
-        OutputModule.run(config, processed_queue)
+    OutputModule.run(config, processed_queue)
+
+
+def run_telemetry(telemetry):
+    telemetry.stream()
+
 
 def main():
-    # Load configuration
     with open("config.json", "r") as f:
         config = json.load(f)
 
-    # Queues
-    raw_queue = queue.Queue(maxsize=config["pipeline_dynamics"]["stream_queue_max_size"])
-    processed_queue = queue.Queue()
-
-    # Initialize modules
     telemetry = TelemetryStream(config, raw_queue)
     core = CoreModule(config)
 
-    # Threads for Core and Output
-    core_thread = threading.Thread(target=run_core, args=(core, raw_queue, processed_queue), daemon=True)
-    output_thread = threading.Thread(target=run_output, args=(config, processed_queue), daemon=True)
+    threads = [
+        threading.Thread(target=run_core, args=(core, raw_queue, processed_queue),
+                         daemon=True, name="CoreWorker"),
+        threading.Thread(target=run_output, args=(config, processed_queue),
+                         daemon=True, name="OutputWorker"),
+        threading.Thread(target=run_telemetry, args=(telemetry,),
+                         daemon=True, name="TelemetryWorker"),
+    ]
 
-    core_thread.start()
-    output_thread.start()
+    for t in threads:
+        t.start()
 
-    # Start telemetry stream (main thread)
-    try:
-        telemetry.stream()
-    except KeyboardInterrupt:
-        print("\nPipeline stopped by user.")
+    time.sleep(0.5)
+    print("✅ All worker threads started:", [t.name for t in threads])
+
+    dashboard.start_dashboard()
+    print("\nDashboard closed — pipeline finished.\n")
+
 
 if __name__ == "__main__":
     main()
