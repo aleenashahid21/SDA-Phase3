@@ -6,6 +6,8 @@ Phase-3/
 ├── core_module.py       # Verifies signatures, drops spoofed packets, computes averages
 ├── output_module.py     # Prints or saves processed packets
 ├── sign_dataset.py      # Utility script to regenerate valid signatures
+├── dashboard.py         # visualization at runtime 
+├── queues.py            # for defiining 2 queues
 ├── data/
 │   ├── sample_sensor_data.xlsx   # Original dataset
 │   └── signed_sensor_data.xlsx   # Corrected dataset with valid signatures
