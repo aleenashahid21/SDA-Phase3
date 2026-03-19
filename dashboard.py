@@ -25,7 +25,7 @@ def start_dashboard():
         ax_queue.set_title("Queue Status")
 
         # Consume only a few packets per frame
-        for _ in range(min(5, processed_queue.qsize())):
+        for _ in range(min(3, processed_queue.qsize())):
             packet = processed_queue.get()
             sensor_times.append(packet["time_period"])
             sensor_values.append(packet["metric_value"])
@@ -48,8 +48,12 @@ def start_dashboard():
         ax_avg.set_title("Live Sensor Running Average")
         ax_avg.legend()
 
+        # Debug overlay
+        ax_values.text(0.01, 0.95, f"Packets plotted: {len(sensor_values)}",
+                       transform=ax_values.transAxes, fontsize=9, color="gray")
+
         return line_values, line_avg
 
-    ani = animation.FuncAnimation(fig, update, interval=1000, blit=False, cache_frame_data=False)
+    ani = animation.FuncAnimation(fig, update, interval=2000, blit=False, cache_frame_data=False)
     plt.tight_layout()
     plt.show()
