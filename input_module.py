@@ -7,35 +7,36 @@ class InputModule:
         dataset_path = config["dataset_path"]
         delay = config["pipeline_dynamics"]["input_delay_seconds"]
         schema = config["schema_mapping"]["columns"]
+        try:
+            #detects extension and picks the right function
+            if path.endswith('.xlsx') or path.endswith('.xls'):
+                df = pd.read_excel(path)
+            else:
+                df = pd.read_csv(path)
 
-        # Load dataset
-        df = pd.read_excel(dataset_path)
+            #iterate through rows and apply your generic mapping
+            for _, row in df.iterrows():
+                packet = {}
+                for col in schema:
+                    src, internal, dtype = col["source_name"], col["internal_mapping"], col["data_type"]
+                    val = row.get(src)
+                    
+                    #casting to correct primitive types
+                    try:
+                        if dtype == "float": packet[internal] = float(val)
+                        elif dtype == "integer": packet[internal] = int(val)
+                        else: packet[internal] = str(val)
+                    except:
+                        packet[internal] = None
 
-        print("Input Module: Reading packets from dataset...")
+                raw_stream.put(packet)
+                time.sleep(delay)
+                
+        except Exception as e:
+            print(f"Input Error: {e}")
+        finally:
+            raw_stream.put(None)
 
-        for _, row in df.iterrows():
-            packet = {}
 
-            # Apply schema mapping
-            for col in schema:
-                source = col["source_name"]
-                internal = col["internal_mapping"]
-                dtype = col["data_type"]
 
-                if dtype == "string":
-                    packet[internal] = str(row[source])
-                elif dtype == "integer":
-                    packet[internal] = int(row[source])
-                elif dtype == "float":
-                    packet[internal] = float(row[source])
-                else:
-                    packet[internal] = row[source]
-
-            # Push packet into queue
-            raw_queue.put(packet)
-            print(f"Input Module queued packet: {packet}")
-
-            # Delay between packets (simulates telemetry)
-            time.sleep(delay)
-
-        print("Input Module finished reading dataset.")
+       
