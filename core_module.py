@@ -1,101 +1,72 @@
 import hashlib
-import hmac
+import multiprocessing
 import time
-import queue
-from collections import defaultdict
 
+class ComputeWorker:
+    """
+    Stateless Parallelism: Authenticates packets.
+    Matches the README and CSV format exactly.
+    """
+    @staticmethod
+    def run(config, raw_stream, processed_stream):
+        settings = config["processing"]["stateless_tasks"]
+        secret_key = settings["secret_key"]
+        iterations = settings["iterations"]
 
-class CoreModule:
-    def __init__(self, config):
-        self.stateless_cfg = config["processing"]["stateless_tasks"]
-        self.stateful_cfg = config["processing"]["stateful_tasks"]
-
-        # Cryptographic parameters
-        self.secret_key = self.stateless_cfg["secret_key"]
-        self.iterations = int(self.stateless_cfg.get("iterations", 100000))
-
-        # Running‑average state
-        self.running_sums = defaultdict(float)
-        self.counts = defaultdict(int)
-        self.window_size = self.stateful_cfg.get("running_average_window_size", 10)
-
-    # ------------------------------------------------------------------
-    # Verification identical to sign_dataset.py
-    # ------------------------------------------------------------------
-    def verify_signature(self, packet):
-        """
-        Verify authenticity using PBKDF2‑HMAC‑SHA256.
-        The original generator hashed f"{entity}|{timestamp}|{value}" as password
-        and used the secret key as the salt.
-        """
-        entity = packet["entity_name"]
-        timestamp = packet["time_period"]
-        value = packet["metric_value"]
-        secret_key = self.secret_key
-
-        message = f"{entity}|{timestamp}|{value}".encode()
-
-        derived_hash = hashlib.pbkdf2_hmac(
-            "sha256",
-            password=message,             # same message string as generator
-            salt=secret_key.encode(),     # secret key as salt
-            iterations=self.iterations,
-        ).hex()
-
-        ok = hmac.compare_digest(derived_hash, packet["security_hash"])
-        if ok:
-            print("✅ Verified:", entity, timestamp, value)
-        else:
-            print("❌ Signature mismatch:", entity, timestamp, value)
-        return ok
-
-    # ------------------------------------------------------------------
-    # Stateful running average
-    # ------------------------------------------------------------------
-    def compute_running_average(self, packet):
-        sensor = packet["entity_name"]
-        value = packet["metric_value"]
-
-        self.running_sums[sensor] += value
-        self.counts[sensor] += 1
-
-        if self.window_size and self.counts[sensor] > self.window_size:
-            self.running_sums[sensor] = value
-            self.counts[sensor] = 1
-
-        return self.running_sums[sensor] / self.counts[sensor]
-
-    # ------------------------------------------------------------------
-    # Continuous, non‑blocking processing loop
-    # ------------------------------------------------------------------
-    def run(self, raw_queue, processed_queue):
-        print("CoreModule started.")
         while True:
-            try:
-                if raw_queue.empty():
-                    time.sleep(0.05)
-                    continue
+            packet = raw_stream.get()
+            if packet is None:
+                processed_stream.put(None)
+                break
 
-                packet = raw_queue.get()
+            # 1. Prepare Salt (Must match CSV string exactly)
+            # Using :.2f ensures 44.3 in Python matches "44.30" in your CSV
+            raw_val = packet.get("metric_value", 0.0)
+            salt_str = f"{float(raw_val):.2f}"
+            
+            expected_hash = packet.get("security_hash", "")
 
-                # Stateless verification
-                if self.stateless_cfg.get("operation") == "verify_signature":
-                    if not self.verify_signature(packet):
-                        continue
+            # 2. Compute PBKDF2 (Key=Password, Value=Salt)
+            dk = hashlib.pbkdf2_hmac(
+                'sha256', 
+                password=secret_key.encode('utf-8'), 
+                salt=salt_str.encode('utf-8'), 
+                iterations=iterations
+            )
+            generated_hash = dk.hex()
 
-                # Stateful computation
-                if self.stateful_cfg.get("operation") == "running_average":
-                    packet["running_avg"] = self.compute_running_average(packet)
+            # 3. Verification
+            if generated_hash == expected_hash:
+                # Authentic data moves to the "Core Queue"
+                processed_stream.put(packet)
+            else:
+                # Tampered data is dropped (This satisfies the security requirement)
+                print(f"[-] SECURITY ALERT: Dropped spoofed packet from {packet.get('entity_name')}")
 
-                # Safe enqueue
-                try:
-                    processed_queue.put(packet, timeout=1)
-                except queue.Full:
-                    print("⚠️ processed_queue full — dropping packet.")
-                    continue
+class AggregatorWorker:
+    """
+    Stateful Aggregator: 
+    Calculates the running average for the Red Line on your graph.
+    """
+    @staticmethod
+    def run(config, processed_stream, final_output_stream):
+        window = config["processing"]["stateful_tasks"]["running_average_window_size"]
+        history = []
 
-            except Exception as e:
-                import traceback
-                print("💥 CoreModule error:", e)
-                traceback.print_exc()
-                time.sleep(0.05)
+        while True:
+            packet = processed_stream.get()
+            time.sleep(0.1)
+            if packet is None:
+                final_output_stream.put(None)
+                break
+
+            # Functional Core: Pure state transformation
+            history, avg = AggregatorWorker._pure_average(history, packet["metric_value"], window)
+            
+            packet["computed_metric"] = avg
+            final_output_stream.put(packet)
+
+    @staticmethod
+    def _pure_average(history, new_val, window):
+        new_history = (history + [new_val])[-window:]
+        return new_history, sum(new_history) / len(new_history)
