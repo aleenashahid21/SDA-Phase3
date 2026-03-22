@@ -12,16 +12,16 @@ class DashboardObserver:
         self.final_stream = final_stream
         self.telemetry = telemetry_subject
         
-      
+        # Subscribe to the subject
         self.telemetry.attach(self)
         
-        #buffers for plotting
+        # Buffers for plotting
         self.max_points = 100
         self.times = collections.deque(maxlen=self.max_points)
         self.raw_values = collections.deque(maxlen=self.max_points)
         self.avg_values = collections.deque(maxlen=self.max_points)
         
-        #telemetry storage
+        # Telemetry storage
         self.latest_stats = {"raw_fill": 0, "processed_fill": 0}
 
     def update(self, stats):
@@ -36,7 +36,7 @@ class DashboardObserver:
                 if packet is None:
                     continue
                 
-                #use generic keys from config mapping
+                # Use generic keys from config mapping
                 self.times.append(packet.get("time_period", 0))
                 self.raw_values.append(packet.get("metric_value", 0.0))
                 self.avg_values.append(packet.get("computed_metric", 0.0))
@@ -53,22 +53,22 @@ class DashboardObserver:
 
         plt.clf()
         
-        #sorting data, fixes the scribble look from parallel processing)
+        # 1. SORT DATA (Fixes the 'Scribble' look from parallel processing)
         combined = sorted(zip(list(self.times), list(self.raw_values), list(self.avg_values)))
         sorted_times, sorted_raw, sorted_avg = zip(*combined)
 
-        
+        # 2. NORMALIZE X-AXIS (Seconds from start)
         start_ts = sorted_times[0]
         relative_times = [t - start_ts for t in sorted_times]
 
-       
+        # --- SUBPLOT 1: LIVE DATA TRENDS ---
         ax1 = plt.subplot(2, 1, 1)
         ax1.plot(relative_times, sorted_raw, label="Raw Sensor", color='#3498db', alpha=0.4)
         ax1.plot(relative_times, sorted_avg, label="Running Avg", color='#e74c3c', linewidth=2)
         ax1.set_title(f"Live Stream: {self.config['dataset_path']}")
         ax1.legend(loc="upper left")
 
-        
+        # --- SUBPLOT 2: SYSTEM TELEMETRY BARS ---
         ax2 = plt.subplot(2, 1, 2)
         raw_f = self.latest_stats.get("raw_fill", 0)
         proc_f = self.latest_stats.get("processed_fill", 0)
@@ -86,6 +86,6 @@ class DashboardObserver:
     def render_loop(self):
         """Start the Matplotlib window."""
         fig = plt.figure(figsize=(10, 8))
-        
+        # Interval of 100ms for smooth updates
         ani = FuncAnimation(fig, self.animate, interval=100, cache_frame_data=False)
         plt.show()
