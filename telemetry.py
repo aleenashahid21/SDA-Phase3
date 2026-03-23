@@ -1,33 +1,19 @@
-import time
+from typing import Dict, List
+from contracts import IStream, IObserver, ISubject
 
-class PipelineTelemetry:
-    """
-    The Subject (Observable).
-    Monitors queue sizes and notifies registered observers.
-    """
-    def __init__(self, raw_q, processed_q):
-        self._raw_q = raw_q
-        self._processed_q = processed_q
-        self._observers = []
-        self._current_stats = {"raw_fill": 0, "processed_fill": 0}
+class PipelineTelemetry(ISubject):
+    def __init__(self, streams: Dict[str, IStream], max_size: int):
+        self._streams = streams
+        self._max_size = max_size
+        self._observers: List[IObserver] = []
 
-    def attach(self, observer):
+    def attach(self, observer: IObserver):
         self._observers.append(observer)
 
-    def notify(self):
-        for observer in self._observers:
-            observer.update(self._current_stats)
+    def notify(self, stats: Dict[str, float]):
+        for obs in self._observers:
+            obs.update(stats)
 
-    def poll_queues(self):
-        """
-        Calculates the percentage fill of each bounded queue.
-        """
-        # Note: qsize() is approximate but sufficient for telemetry
-        raw_fill = (self._raw_q.qsize() / self._raw_q._maxsize) * 100
-        proc_fill = (self._processed_q.qsize() / self._processed_q._maxsize) * 100
-        
-        self._current_stats = {
-            "raw_fill": round(raw_fill, 2),
-            "processed_fill": round(proc_fill, 2)
-        }
-        self.notify()
+    def poll(self):
+        stats = {name: (s.qsize() / self._max_size) * 100 for name, s in self._streams.items()}
+        self.notify(stats)
