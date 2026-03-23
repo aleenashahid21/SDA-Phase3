@@ -1,91 +1,85 @@
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import collections
+from contracts import IObserver
 
-class DashboardObserver:
-    """
-    The Observer:
-    Subscribes to Telemetry and renders the Live Graph.
-    """
+class DashboardObserver(IObserver):
     def __init__(self, config, final_stream, telemetry_subject):
         self.config = config
         self.final_stream = final_stream
         self.telemetry = telemetry_subject
-        
-        # Subscribe to the subject
         self.telemetry.attach(self)
         
-        # Buffers for plotting
+        # 1. ENFORCE STRICT LIMITS: Prevents memory overflow
         self.max_points = 100
-        self.times = collections.deque(maxlen=self.max_points)
-        self.raw_values = collections.deque(maxlen=self.max_points)
-        self.avg_values = collections.deque(maxlen=self.max_points)
-        
-        # Telemetry storage
-        self.latest_stats = {"raw_fill": 0, "processed_fill": 0}
+        self.data_buffers = collections.defaultdict(lambda: collections.deque(maxlen=self.max_points))
+        self.latest_stats = {}
 
-    def update(self, stats):
-        """Called by the Telemetry Subject (Observer Pattern)"""
+    def update(self, stats: dict):
         self.latest_stats = stats
 
     def _process_data(self):
-        """Drains the final stream into local buffers for plotting."""
+        """Drains the stream but limits processing per frame to prevent GUI lockup."""
+        count = 0
         try:
-            while not self.final_stream.empty():
+            # Only process up to 50 packets per animation frame
+            while not self.final_stream.empty() and count < 50:
                 packet = self.final_stream.get_nowait()
-                if packet is None:
-                    continue
-                
-                # Use generic keys from config mapping
-                self.times.append(packet.get("time_period", 0))
-                self.raw_values.append(packet.get("metric_value", 0.0))
-                self.avg_values.append(packet.get("computed_metric", 0.0))
-        except Exception:
+                if packet:
+                    for k, v in packet.items():
+                        self.data_buffers[k].append(v)
+                count += 1
+        except:
             pass
 
-    def animate(self, i):
-        """The Full Animation Loop: Updates data, sorts it, and renders."""
-        self.telemetry.poll_queues()
+    def animate(self, i, ax1, ax2):
+        self.telemetry.poll()
         self._process_data()
-
-        if not self.times or len(self.times) < 2:
+        
+        # Check if we have data to plot
+        x_key = "time_period"
+        if len(self.data_buffers[x_key]) < 2:
             return
 
-        plt.clf()
+        # 2. OPTIMIZE RENDERING: Clear axes instead of the whole figure
+        ax1.cla()
+        ax2.cla()
+
+        # Sort and Plot Data (Fixes the zigzag 'scribble' look)
+        y_keys = [chart["y_axis"] for chart in self.config["visualizations"]["data_charts"]]
         
-        # 1. SORT DATA (Fixes the 'Scribble' look from parallel processing)
-        combined = sorted(zip(list(self.times), list(self.raw_values), list(self.avg_values)))
-        sorted_times, sorted_raw, sorted_avg = zip(*combined)
+        # Zip, Sort by time, and Plot
+        combined = sorted(zip(list(self.data_buffers[x_key]), 
+                             *[list(self.data_buffers[k]) for k in y_keys]))
+        
+        if combined:
+            unzipped = list(zip(*combined))
+            times = unzipped[0]
+            for idx, y_key in enumerate(y_keys):
+                ax1.plot(times, unzipped[idx+1], label=y_key)
 
-        # 2. NORMALIZE X-AXIS (Seconds from start)
-        start_ts = sorted_times[0]
-        relative_times = [t - start_ts for t in sorted_times]
-
-        # --- SUBPLOT 1: LIVE DATA TRENDS ---
-        ax1 = plt.subplot(2, 1, 1)
-        ax1.plot(relative_times, sorted_raw, label="Raw Sensor", color='#3498db', alpha=0.4)
-        ax1.plot(relative_times, sorted_avg, label="Running Avg", color='#e74c3c', linewidth=2)
-        ax1.set_title(f"Live Stream: {self.config['dataset_path']}")
+        ax1.set_title("Real-Time Data Pipeline")
         ax1.legend(loc="upper left")
 
-        # --- SUBPLOT 2: SYSTEM TELEMETRY BARS ---
-        ax2 = plt.subplot(2, 1, 2)
-        raw_f = self.latest_stats.get("raw_fill", 0)
-        proc_f = self.latest_stats.get("processed_fill", 0)
-        
-        queues = ['Input Queue', 'Core Queue']
-        fills = [raw_f, proc_f]
-        colors = ['#2ecc71' if f < 50 else '#f1c40f' if f < 80 else '#e74c3c' for f in fills]
-
-        ax2.barh(queues, fills, color=colors)
-        ax2.set_xlim(0, 100)
-        ax2.set_title("System Backpressure Telemetry (%)")
-        
-        plt.tight_layout()
+        # Telemetry Bars
+        if self.latest_stats:
+            names = list(self.latest_stats.keys())
+            vals = list(self.latest_stats.values())
+            colors = ['#2ecc71' if v < 50 else '#f1c40f' if v < 80 else '#e74c3c' for v in vals]
+            
+            bars = ax2.barh(names, vals, color=colors)
+            ax2.set_xlim(0, 100)
+            ax2.set_title("System Backpressure (%)")
+            
+            for bar in bars:
+                w = bar.get_width()
+                ax2.text(w + 1, bar.get_y() + bar.get_height()/2, f'{w:.1f}%', va='center')
 
     def render_loop(self):
-        """Start the Matplotlib window."""
-        fig = plt.figure(figsize=(10, 8))
-        # Interval of 100ms for smooth updates
-        ani = FuncAnimation(fig, self.animate, interval=100, cache_frame_data=False)
+        # 3. REDUCE FIGURE SIZE: Saves memory for Tkinter
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
+        plt.tight_layout()
+        
+        # Pass axes to animate to avoid repeated figure creation
+        ani = FuncAnimation(fig, self.animate, fargs=(ax1, ax2), interval=200, cache_frame_data=False)
         plt.show()
