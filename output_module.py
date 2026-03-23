@@ -10,7 +10,7 @@ class DashboardObserver(IObserver):
         self.telemetry = telemetry_subject
         self.telemetry.attach(self)
         
-        # 1. ENFORCE STRICT LIMITS: Prevents memory overflow
+        # prevents memory overflow
         self.max_points = 100
         self.data_buffers = collections.defaultdict(lambda: collections.deque(maxlen=self.max_points))
         self.latest_stats = {}
@@ -22,7 +22,7 @@ class DashboardObserver(IObserver):
         """Drains the stream but limits processing per frame to prevent GUI lockup."""
         count = 0
         try:
-            # Only process up to 50 packets per animation frame
+            # only process up to 50 packets per animation frame
             while not self.final_stream.empty() and count < 50:
                 packet = self.final_stream.get_nowait()
                 if packet:
@@ -36,19 +36,19 @@ class DashboardObserver(IObserver):
         self.telemetry.poll()
         self._process_data()
         
-        # Check if we have data to plot
+        #check if we have data to plot
         x_key = "time_period"
         if len(self.data_buffers[x_key]) < 2:
             return
 
-        # 2. OPTIMIZE RENDERING: Clear axes instead of the whole figure
+        #clear axes instead of the whole figure
         ax1.cla()
         ax2.cla()
 
-        # Sort and Plot Data (Fixes the zigzag 'scribble' look)
+        #sort and Plot Data (Fixes the zigzag 'scribble' look)
         y_keys = [chart["y_axis"] for chart in self.config["visualizations"]["data_charts"]]
         
-        # Zip, Sort by time, and Plot
+        # zip, sort by time, and Plot
         combined = sorted(zip(list(self.data_buffers[x_key]), 
                              *[list(self.data_buffers[k]) for k in y_keys]))
         
@@ -61,7 +61,7 @@ class DashboardObserver(IObserver):
         ax1.set_title("Real-Time Data Pipeline")
         ax1.legend(loc="upper left")
 
-        # Telemetry Bars
+        #telemetry Bars
         if self.latest_stats:
             names = list(self.latest_stats.keys())
             vals = list(self.latest_stats.values())
@@ -76,10 +76,10 @@ class DashboardObserver(IObserver):
                 ax2.text(w + 1, bar.get_y() + bar.get_height()/2, f'{w:.1f}%', va='center')
 
     def render_loop(self):
-        # 3. REDUCE FIGURE SIZE: Saves memory for Tkinter
+        #reduce size to saves memory 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
         plt.tight_layout()
         
-        # Pass axes to animate to avoid repeated figure creation
+        #pass axes to animate to avoid repeated figure creation
         ani = FuncAnimation(fig, self.animate, fargs=(ax1, ax2), interval=200, cache_frame_data=False)
         plt.show()
