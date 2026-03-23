@@ -5,12 +5,29 @@ Phase-3/
 ├── telemetry.py         # Streams packets from dataset into raw queue
 ├── core_module.py       # Verifies signatures, drops spoofed packets, computes averages
 ├── output_module.py     # Prints or saves processed packets
-├── sign_dataset.py      # Utility script to regenerate valid signatures
-├── dashboard.py         # visualization at runtime 
-├── queues.py            # for defiining 2 queues
+├── sign_dataset.py      # Utility script to regenerate valid signatures
 ├── data/
 │   ├── sample_sensor_data.xlsx   # Original dataset
-│   └── signed_sensor_data.xlsx   # Corrected dataset with valid signatures
+│   └── signed_sensor_data.xlsx   # Corrected dataset with valid 
+
+Phase-3/
+├── config.json              # Configuration (algorithm, iterations, secret key, dataset path)
+├── main.py                  # Entry point: initializes and runs all modules
+├── telemetry.py             # Streams packets from dataset into raw queue
+├── contracts.py             # Defines data schemas and interfaces between modules
+│
+├── module/                  # Modularized processing components
+│   ├── input_module.py      # Handles input ingestion and preprocessing
+│   ├── core_module.py      # Verifies signatures, filters spoofed packets, processes data
+│   └── output_module.py    # #Displays or stores processed results logic (formatting, saving)
+│
+├── data/
+│   ├── dataset/             # Raw dataset (unverified data)
+│   ├── signed_dataset/      # Verified dataset with valid signatures
+│   ├── sample_sensor_data.xlsx     # Original dataset
+│   └── signed_sensor_data.xlsx     # Dataset with corrected signatures
+│
+├── sign_dataset.py          # Utility script to generate/verify dataset signatures
 
 SECRET_KEY = "sda_spring_2026_secure_key"
 ITERATIONS = 100000
