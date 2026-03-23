@@ -1,42 +1,46 @@
-import time
 import pandas as pd
+import time
+from typing import List, Dict, Any
+from contracts import IStream
 
-class InputModule:
+class InputWorker:
+   
     @staticmethod
-    def run(config, raw_queue):
-        dataset_path = config["dataset_path"]
-        delay = config["pipeline_dynamics"]["input_delay_seconds"]
-        schema = config["schema_mapping"]["columns"]
+    def run(path: str, delay: float, schema: List[Dict], raw_stream: IStream):
         try:
-            #detects extension and picks the right function
-            if path.endswith('.xlsx') or path.endswith('.xls'):
+            # 1. DYNAMIC LOADER: Handles both CSV and Excel based on extension
+            if path.endswith(('.xlsx', '.xls')):
                 df = pd.read_excel(path)
             else:
                 df = pd.read_csv(path)
 
-            #iterate through rows and apply your generic mapping
+            #converts domain-specific columns to generic keys
             for _, row in df.iterrows():
                 packet = {}
                 for col in schema:
-                    src, internal, dtype = col["source_name"], col["internal_mapping"], col["data_type"]
+                    src = col["source_name"]
+                    internal = col["internal_mapping"]
+                    dtype = col["data_type"]
+                    
                     val = row.get(src)
                     
-                    #casting to correct primitive types
+                    #cast based on config.json
                     try:
-                        if dtype == "float": packet[internal] = float(val)
-                        elif dtype == "integer": packet[internal] = int(val)
-                        else: packet[internal] = str(val)
-                    except:
+                        if dtype == "float": 
+                            packet[internal] = float(val)
+                        elif dtype == "integer": 
+                            packet[internal] = int(val)
+                        else: 
+                            packet[internal] = str(val)
+                    except (ValueError, TypeError):
                         packet[internal] = None
 
+                #backpressure is call will block if raw_stream is full
                 raw_stream.put(packet)
                 time.sleep(delay)
                 
         except Exception as e:
-            print(f"Input Error: {e}")
+            print(f"[!] Input Error: {e}")
         finally:
+            #signal to the scatter pool that input has ended
             raw_stream.put(None)
-
-
-
-       
